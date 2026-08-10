@@ -40,19 +40,21 @@ $VenvPython = Join-Path $VenvRoot 'Scripts\python.exe'
 
 $EnvPath = Join-Path $ConfigRoot '.env'
 if (-not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
-    $schoolUrl = Read-Host '학교 홈페이지 기본 주소 [https://ibs.icees.kr]'
-    if ([string]::IsNullOrWhiteSpace($schoolUrl)) { $schoolUrl = 'https://ibs.icees.kr' }
-    $grade = Read-Host '학년 [6]'
-    if ([string]::IsNullOrWhiteSpace($grade)) { $grade = '6' }
-    $classNumber = Read-Host '반 [2]'
-    if ([string]::IsNullOrWhiteSpace($classNumber)) { $classNumber = '2' }
+    $schoolUrl = Read-Host '학교 홈페이지 주소 (근무 학교의 주간학습안내 주소)'
+    if ([string]::IsNullOrWhiteSpace($schoolUrl)) { throw '학교 홈페이지 주소는 필수입니다.' }
+    $grade = Read-Host '담당 학년 (예: 6)'
+    if ([string]::IsNullOrWhiteSpace($grade)) { throw '담당 학년은 필수입니다.' }
+    $classNumber = Read-Host '담당 반 (예: 2)'
+    if ([string]::IsNullOrWhiteSpace($classNumber)) { throw '담당 반은 필수입니다.' }
+    $excludedSubjects = Read-Host '제외할 전담 과목 (쉼표로 구분, 예: 체육,영어)'
+    if ([string]::IsNullOrWhiteSpace($excludedSubjects)) { $excludedSubjects = '체육,영어' }
     $kakaoKey = Read-Host 'Kakao REST API 키 (없으면 Enter)'
     $openAiKey = Read-Host 'OpenAI API 키 (이미지 자동 판독이 필요할 때만, 없으면 Enter)'
     $lines = @(
         "LESSON_AGENT_SCHOOL_BASE_URL=$schoolUrl",
         "LESSON_AGENT_GRADE=$grade",
         "LESSON_AGENT_CLASS_NUMBER=$classNumber",
-        'LESSON_AGENT_EXCLUDED_SUBJECTS=체육,영어',
+        "LESSON_AGENT_EXCLUDED_SUBJECTS=$excludedSubjects",
         'LESSON_AGENT_TIMEZONE=Asia/Seoul',
         'LESSON_AGENT_MAX_RESULTS=5',
         'LESSON_AGENT_KAKAO_REDIRECT_URI=http://localhost:8765/callback',

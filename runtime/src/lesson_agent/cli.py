@@ -63,7 +63,9 @@ def main(argv: list[str] | None = None) -> int:
             kakao.save_authorization_code(input("리디렉션 주소의 code 값을 붙여넣으세요: ").strip())
             return 0
         if args.command == "test-kakao":
-            _kakao(settings).send_to_me(["수업 자료 에이전트 카카오 연결 시험 완료\nhttps://ibs.icees.kr"])
+            _kakao(settings).send_to_me(
+                [f"수업 자료 에이전트 카카오 연결 시험 완료\n{settings.school_base_url}"]
+            )
             return 0
         if args.command == "preview":
             run_date = args.date or _today(settings)
@@ -117,7 +119,11 @@ def _today(settings: Settings) -> date:
 def _kakao(settings: Settings) -> KakaoClient:
     if not settings.kakao_rest_api_key:
         raise KakaoAuthRequired("LESSON_AGENT_KAKAO_REST_API_KEY 설정이 필요합니다.")
-    return KakaoClient(settings.kakao_rest_api_key, settings.kakao_redirect_uri)
+    return KakaoClient(
+        settings.kakao_rest_api_key,
+        settings.kakao_redirect_uri,
+        link_url=settings.school_base_url,
+    )
 
 
 def _build_agent(settings: Settings) -> LessonAgent:

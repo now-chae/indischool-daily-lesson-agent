@@ -50,10 +50,13 @@ class LessonAgent:
         with self.state.acquire(target_date):
             post = self.school.find_plan_for(target_date)
             if post is None:
-                messages = (f"[{target_date.isoformat()}] 6학년 주간학습안내를 찾지 못했습니다.\nhttps://ibs.icees.kr",)
+                messages = (
+                    f"[{target_date.isoformat()}] {self.settings.grade}학년 주간학습안내를 찾지 못했습니다.\n"
+                    f"{self.settings.school_base_url}",
+                )
                 if not dry_run:
                     self.kakao.send_to_me(list(messages))
-                    self.state.mark_sent(target_date, "https://ibs.icees.kr", [], _hashes(messages))
+                    self.state.mark_sent(target_date, self.settings.school_base_url, [], _hashes(messages))
                 return RunResult("no_plan", not dry_run, messages)
 
             downloaded: Path | None = None
@@ -111,6 +114,8 @@ class LessonAgent:
                     tuple(results),
                     tuple(warnings),
                     art_recent,
+                    grade=self.settings.grade,
+                    class_number=self.settings.class_number,
                 )
                 messages = tuple(format_messages(report))
                 if not dry_run:

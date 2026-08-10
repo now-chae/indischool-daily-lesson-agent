@@ -27,11 +27,13 @@ class KakaoClient:
         rest_api_key: str,
         redirect_uri: str,
         *,
+        link_url: str = "https://example.com",
         store: Any = keyring,
         client: httpx.Client | None = None,
     ) -> None:
         self.rest_api_key = rest_api_key
         self.redirect_uri = redirect_uri
+        self.link_url = link_url
         self.store = store
         self.client = client or httpx.Client(timeout=20)
 
@@ -82,7 +84,7 @@ class KakaoClient:
         template = {
             "object_type": "text",
             "text": message,
-            "link": {"web_url": "https://ibs.icees.kr", "mobile_web_url": "https://ibs.icees.kr"},
+            "link": {"web_url": self.link_url, "mobile_web_url": self.link_url},
             "button_title": "학교 홈페이지",
         }
         return self.client.post(

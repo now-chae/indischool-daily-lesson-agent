@@ -9,10 +9,10 @@
   "interface": {
     "displayName": "인디스쿨 오늘 수업자료",
     "shortDescription": "주간학습안내 기반 인디스쿨 자료 탐색 에이전트",
-    "longDescription": "백석초등학교 6학년 2반 설정을 기본으로, 주간학습안내의 당일 수업을 판독하고 허가된 범위에서 인디스쿨 자료를 찾아 카카오 나와의 채팅으로 보냅니다.",
+    "longDescription": "사용자가 설정한 학교·학년·반의 주간학습안내를 판독하고, 허가된 범위에서 인디스쿨 자료를 찾아 카카오 나와의 채팅으로 보냅니다.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "오늘 주간학습안내를 확인하고 체육·영어를 제외한 자료를 검색해 카카오 나와의 채팅으로 정리해줘."
+    "defaultPrompt": "설정한 학교의 오늘 주간학습안내를 확인하고 전담 과목을 제외한 자료를 검색해 카카오 나와의 채팅으로 정리해줘."
   }
 }

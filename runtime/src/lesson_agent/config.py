@@ -25,7 +25,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    school_base_url: str = "https://ibs.icees.kr"
+    school_base_url: str = "https://example.invalid"
     grade: int = 6
     class_number: int = 2
     excluded_subjects: Annotated[tuple[str, ...], NoDecode] = ("체육", "영어")

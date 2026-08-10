@@ -17,12 +17,14 @@ class DailyReport:
     results: tuple[tuple[SearchLesson, tuple[ResourceSummary, ...]], ...]
     warnings: tuple[str, ...]
     art_recent: tuple[ResourceSummary, ...] = ()
+    grade: int = 6
+    class_number: int = 2
 
 
 def format_messages(report: DailyReport, max_chars: int = 900) -> list[str]:
     header = (
         f"[{report.run_date.month}월 {report.run_date.day}일 수업자료]\n"
-        "인천백석초 6학년 2반"
+        f"{report.grade}학년 {report.class_number}반"
     )
     messages = _pack_blocks([header], max_chars)
     remaining_warnings = list(report.warnings)
