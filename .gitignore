@@ -1,0 +1,8 @@
+.env
+.venv/
+.state/
+.downloads/
+.playwright-profile/
+__pycache__/
+*.py[cod]
+dist/

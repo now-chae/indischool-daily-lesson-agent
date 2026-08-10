@@ -1,0 +1,18 @@
+{
+  "name": "indischool-daily-lesson-agent",
+  "version": "0.1.0",
+  "description": "A local teacher assistant that reads the weekly learning guide, searches permitted Indischool lesson resources, and sends concise Kakao summaries.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "인디스쿨 오늘 수업자료",
+    "shortDescription": "주간학습안내 기반 인디스쿨 자료 탐색 에이전트",
+    "longDescription": "백석초등학교 6학년 2반 설정을 기본으로, 주간학습안내의 당일 수업을 판독하고 허가된 범위에서 인디스쿨 자료를 찾아 카카오 나와의 채팅으로 보냅니다.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "오늘 주간학습안내를 확인하고 체육·영어를 제외한 자료를 검색해 카카오 나와의 채팅으로 정리해줘."
+  }
+}

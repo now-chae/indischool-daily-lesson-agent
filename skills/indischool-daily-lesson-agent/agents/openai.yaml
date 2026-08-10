@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Indischool Daily Lesson Materials"
+  short_description: "Find permitted lesson resources from the weekly guide"
+  default_prompt: "Read today's weekly learning guide, find permitted lesson resources, and prepare a concise Kakao summary."
