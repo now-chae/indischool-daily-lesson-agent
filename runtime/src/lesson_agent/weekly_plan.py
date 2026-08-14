@@ -47,6 +47,7 @@ def extract_document_text(
     vision_model: str = "gpt-5-mini",
     target_date: date | None = None,
     class_number: int | None = None,
+    grade: int = 6,
 ) -> str:
     suffix = path.suffix.lower()
     if suffix == ".hwpx":
@@ -61,12 +62,12 @@ def extract_document_text(
             )
         if target_date is None or class_number is None:
             raise PlanParseError("date_missing", "이미지 판독에는 날짜와 반 정보가 필요합니다.")
-        return _extract_image(path, vision_client, vision_model, target_date, class_number)
+        return _extract_image(path, vision_client, vision_model, target_date, class_number, grade)
     raise PlanParseError("unsupported", f"지원하지 않는 파일 형식입니다: {suffix}")
 
 
 def _extract_image(
-    path: Path, client, model: str, target_date: date, class_number: int
+    path: Path, client, model: str, target_date: date, class_number: int, grade: int
 ) -> str:
     mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
@@ -79,7 +80,7 @@ def _extract_image(
                     {
                         "type": "input_text",
                         "text": (
-                            f"이 이미지는 초등학교 주간학습안내다. 6학년 {class_number}반의 "
+                            f"이 이미지는 초등학교 주간학습안내다. {grade}학년 {class_number}반의 "
                             f"{target_date.year}년 {target_date.month}월 {target_date.day}일 시간표만 읽어라. "
                             "오른쪽 학급 시간표의 해당 요일 과목 순서와 왼쪽 과목별 학습내용·차시 순서를 "
                             "결합해야 한다. 각 과목은 월요일 1교시부터 목표 수업까지의 주간 누적 등장 순번을 "
@@ -91,7 +92,7 @@ def _extract_image(
                              " Ignore the earlier single-day output format. Output only structured records for the full week: "
                              "TIMETABLE | class_number | Korean weekday (월, 화, 수, 목, 금) | period 1-6 | subject, "
                              "then CONTENT | subject | unit name | lesson topic | pages | weekly occurrence such as 4/9. "
-                             "Include every visible class-2 weekday and period record before CONTENT records."
+                             f" Include every visible class-{class_number} weekday and period record before CONTENT records."
                         ),
                     },
                     {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
@@ -227,14 +228,16 @@ def resolve_structured_lessons(
     return lessons
 
 
-def parse_lessons(text: str, target_date: date, class_number: int) -> list[Lesson]:
+def parse_lessons(
+    text: str, target_date: date, class_number: int, *, grade: int = 6
+) -> list[Lesson]:
     if any(line.lstrip().startswith("TIMETABLE |") for line in text.splitlines()):
         cells, contents = parse_structured_week(text)
         return resolve_structured_lessons(cells, contents, target_date, class_number)
-    class_pattern = rf"6\s*학년\s*{class_number}\s*반"
+    class_pattern = rf"{grade}\s*학년\s*{class_number}\s*반"
     if not re.search(class_pattern, text):
         raise PlanParseError(
-            "class_missing", f"문서에서 6학년 {class_number}반을 찾지 못했습니다."
+            "class_missing", f"문서에서 {grade}학년 {class_number}반을 찾지 못했습니다."
         )
     date_pattern = rf"{target_date.year}\s*년\s*{target_date.month}\s*월\s*{target_date.day}\s*일"
     if not re.search(date_pattern, text):

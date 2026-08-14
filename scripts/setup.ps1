@@ -14,6 +14,7 @@ $VenvRoot = Join-Path $LocalRoot 'venv'
 $ProfileRoot = Join-Path $LocalRoot 'indischool-profile'
 $StateRoot = Join-Path $LocalRoot 'state'
 $DownloadRoot = Join-Path $LocalRoot 'downloads'
+$PlanRoot = Join-Path $LocalRoot 'plans'
 
 if (-not (Test-Path -LiteralPath (Join-Path $RuntimeRoot 'pyproject.toml') -PathType Leaf)) {
     throw "runtime\pyproject.toml not found. Run scripts\build-agent-package.ps1 first."
@@ -22,7 +23,7 @@ if ($LocalRoot -match '(?i)\\OneDrive(?: - [^\\]+)?\\') {
     throw "Refusing to use OneDrive for runtime data: $LocalRoot"
 }
 
-foreach ($path in @($LocalRoot, $ConfigRoot, $ProfileRoot, $StateRoot, $DownloadRoot)) {
+foreach ($path in @($LocalRoot, $ConfigRoot, $ProfileRoot, $StateRoot, $DownloadRoot, $PlanRoot)) {
     New-Item -ItemType Directory -Force -Path $path | Out-Null
 }
 
@@ -40,8 +41,22 @@ $VenvPython = Join-Path $VenvRoot 'Scripts\python.exe'
 
 $EnvPath = Join-Path $ConfigRoot '.env'
 if (-not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
-    $schoolUrl = Read-Host '학교 홈페이지 주소 (근무 학교의 주간학습안내 주소)'
-    if ([string]::IsNullOrWhiteSpace($schoolUrl)) { throw '학교 홈페이지 주소는 필수입니다.' }
+    $planSource = Read-Host '주간학습안내 가져오기 (1=학교 홈페이지, 2=내 컴퓨터 파일 폴더)'
+    if ([string]::IsNullOrWhiteSpace($planSource)) { $planSource = '1' }
+    if ($planSource -eq '1' -or $planSource -eq 'web') {
+        $planSource = 'web'
+        $schoolUrl = Read-Host '학교 홈페이지 주소 (주간학습안내를 확인할 주소)'
+        if ([string]::IsNullOrWhiteSpace($schoolUrl)) { throw '학교 홈페이지 주소는 필수입니다.' }
+        $localPlanDir = $PlanRoot
+    } elseif ($planSource -eq '2' -or $planSource -eq 'local') {
+        $planSource = 'local'
+        $schoolUrl = 'https://indischool.com'
+        $localPlanDir = Read-Host "주간안내 파일 폴더 (Enter=$PlanRoot)"
+        if ([string]::IsNullOrWhiteSpace($localPlanDir)) { $localPlanDir = $PlanRoot }
+        New-Item -ItemType Directory -Force -Path $localPlanDir | Out-Null
+    } else {
+        throw '1 또는 2를 입력하세요.'
+    }
     $grade = Read-Host '담당 학년 (예: 6)'
     if ([string]::IsNullOrWhiteSpace($grade)) { throw '담당 학년은 필수입니다.' }
     $classNumber = Read-Host '담당 반 (예: 2)'
@@ -51,7 +66,9 @@ if (-not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
     $kakaoKey = Read-Host 'Kakao REST API 키 (없으면 Enter)'
     $openAiKey = Read-Host 'OpenAI API 키 (이미지 자동 판독이 필요할 때만, 없으면 Enter)'
     $lines = @(
+        "LESSON_AGENT_PLAN_SOURCE=$planSource",
         "LESSON_AGENT_SCHOOL_BASE_URL=$schoolUrl",
+        "LESSON_AGENT_LOCAL_PLAN_DIR=$localPlanDir",
         "LESSON_AGENT_GRADE=$grade",
         "LESSON_AGENT_CLASS_NUMBER=$classNumber",
         "LESSON_AGENT_EXCLUDED_SUBJECTS=$excludedSubjects",
@@ -89,4 +106,5 @@ Write-Host ''
 Write-Host 'Installation complete.'
 Write-Host "Configuration: $EnvPath"
 Write-Host "Runtime data: $LocalRoot"
+Write-Host "Weekly-plan folder: $PlanRoot"
 Write-Host 'Next: run setup.ps1 -ConfigureIndischool, then run run.ps1 -TestKakao.'

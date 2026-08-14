@@ -13,7 +13,7 @@ from lesson_agent.config import Settings
 from lesson_agent.indischool import IndischoolBrowser
 from lesson_agent.kakao import KakaoAuthRequired, KakaoClient
 from lesson_agent.models import SearchLesson
-from lesson_agent.school import SchoolClient
+from lesson_agent.school import LocalPlanClient, SchoolClient
 from lesson_agent.state import RunState
 from lesson_agent.summarize import Summarizer
 from lesson_agent.weekly_plan import build_search_lessons, extract_document_text, parse_lessons
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "test-kakao":
             _kakao(settings).send_to_me(
-                [f"수업 자료 에이전트 카카오 연결 시험 완료\n{settings.school_base_url}"]
+                [f"수업 자료 에이전트 카카오 연결 시험 완료\n{_kakao_link(settings)}"]
             )
             return 0
         if args.command == "preview":
@@ -81,9 +81,11 @@ def main(argv: list[str] | None = None) -> int:
                     vision_model=settings.openai_model,
                     target_date=run_date,
                     class_number=settings.class_number,
+                    grade=settings.grade,
                 ),
                 run_date,
                 settings.class_number,
+                grade=settings.grade,
             )
             searchable, excluded = build_search_lessons(lessons, settings.excluded_subjects)
             for lesson in lessons:
@@ -122,7 +124,7 @@ def _kakao(settings: Settings) -> KakaoClient:
     return KakaoClient(
         settings.kakao_rest_api_key,
         settings.kakao_redirect_uri,
-        link_url=settings.school_base_url,
+        link_url=_kakao_link(settings),
     )
 
 
@@ -134,8 +136,14 @@ def _build_agent(settings: Settings) -> LessonAgent:
         openai_client = OpenAI(api_key=settings.openai_api_key)
     return LessonAgent(
         settings=settings,
-        school=SchoolClient(settings.school_base_url, settings.grade),
-        indischool=IndischoolBrowser(settings.indischool_profile_path, settings.max_results),
+        school=(
+            LocalPlanClient(settings.local_plan_dir)
+            if settings.plan_source == "local"
+            else SchoolClient(settings.school_base_url, settings.grade)
+        ),
+        indischool=IndischoolBrowser(
+            settings.indischool_profile_path, settings.max_results, grade=settings.grade
+        ),
         summarizer=Summarizer(openai_client, settings.openai_model),
         kakao=_kakao(settings),
         state=RunState(settings.state_path),
@@ -143,8 +151,13 @@ def _build_agent(settings: Settings) -> LessonAgent:
             _read_plan,
             vision_client=openai_client,
             vision_model=settings.openai_model,
+            grade=settings.grade,
         ),
     )
+
+
+def _kakao_link(settings: Settings) -> str:
+    return settings.school_base_url if settings.plan_source == "web" else "https://indischool.com"
 
 
 if __name__ == "__main__":

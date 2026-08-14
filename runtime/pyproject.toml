@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lesson-agent"
 version = "0.1.0"
-description = "Daily lesson material assistant for Incheon Baekseok Elementary School"
+description = "Configurable daily lesson material assistant for teachers"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12",

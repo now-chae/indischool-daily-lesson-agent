@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -11,6 +12,7 @@ from bs4 import BeautifulSoup
 
 
 MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
+PLAN_SUFFIXES = {".hwp", ".hwpx", ".jpg", ".jpeg", ".png", ".webp"}
 
 
 class SchoolError(RuntimeError):
@@ -28,6 +30,48 @@ class WeeklyPlanPost:
     attachment_url: str
     filename: str
     published_on: date
+
+
+class LocalPlanClient:
+    """Read accumulated weekly-plan files from a local directory.
+
+    Files are selected only when their filename contains one or two ISO-like
+    dates. One date means that date; two dates define an inclusive range.
+    """
+
+    def __init__(self, plan_dir: Path) -> None:
+        self.plan_dir = Path(plan_dir)
+
+    def find_plan_for(self, target_date: date) -> WeeklyPlanPost | None:
+        if not self.plan_dir.exists():
+            return None
+        candidates = [
+            path
+            for path in self.plan_dir.iterdir()
+            if path.is_file()
+            and path.suffix.lower() in PLAN_SUFFIXES
+            and _filename_covers_date(path.name, target_date)
+        ]
+        if not candidates:
+            return None
+        source = max(candidates, key=lambda path: path.stat().st_mtime_ns)
+        modified = date.fromtimestamp(source.stat().st_mtime)
+        return WeeklyPlanPost(
+            title=source.stem,
+            post_url=source.as_uri(),
+            attachment_url=str(source),
+            filename=source.name,
+            published_on=modified,
+        )
+
+    def download(self, post: WeeklyPlanPost, destination: Path) -> Path:
+        source = Path(post.attachment_url)
+        if not source.is_file():
+            raise SchoolDownloadError(f"로컬 주간안내 파일을 찾을 수 없습니다: {source}")
+        destination.mkdir(parents=True, exist_ok=True)
+        target = destination / source.name
+        shutil.copy2(source, target)
+        return target
 
 
 class SchoolClient:
@@ -59,7 +103,7 @@ class SchoolClient:
 
     def download(self, post: WeeklyPlanPost, destination: Path) -> Path:
         suffix = Path(post.filename).suffix.lower()
-        if suffix not in {".hwp", ".hwpx", ".jpg", ".jpeg", ".png", ".webp"}:
+        if suffix not in PLAN_SUFFIXES:
             raise SchoolDownloadError(f"지원하지 않는 첨부 형식입니다: {suffix}")
         response = self.client.get(post.attachment_url)
         response.raise_for_status()
@@ -136,7 +180,7 @@ class SchoolClient:
                     for img in soup.find_all("img", src=True)
                     if "/upload/keditor/" in img["src"]
                     and Path(urlsplit(img["src"]).path).suffix.lower()
-                    in {".jpg", ".jpeg", ".png", ".webp"}
+                    in PLAN_SUFFIXES - {".hwp", ".hwpx"}
                 ),
                 None,
             )
@@ -166,6 +210,36 @@ def _title_covers_date(title: str, target: date) -> bool:
     if end < start:
         end = date(target.year + 1, end.month, end.day)
     return start <= target <= end
+
+
+def _filename_covers_date(filename: str, target: date) -> bool:
+    dates = _dates_from_filename(filename)
+    if not dates:
+        return False
+    if len(dates) == 1:
+        return dates[0] == target
+    start, end = dates[0], dates[1]
+    if end < start:
+        end = date(start.year + 1, end.month, end.day)
+    return start <= target <= end
+
+
+def _dates_from_filename(filename: str) -> list[date]:
+    stem = Path(filename).stem
+    found: list[date] = []
+    patterns = (
+        r"(?<!\d)(\d{4})[-_.년\s]+(\d{1,2})[-_.월\s]+(\d{1,2})일?",
+        r"(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, stem):
+            try:
+                value = date(*(int(part) for part in match.groups()))
+            except ValueError:
+                continue
+            if value not in found:
+                found.append(value)
+    return sorted(found)
 
 
 def _with_page(url: str, page_number: int) -> str:
