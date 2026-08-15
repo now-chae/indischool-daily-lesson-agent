@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "인디스쿨 오늘 수업자료",
     "shortDescription": "주간학습안내 기반 인디스쿨 자료 탐색 에이전트",
-    "longDescription": "사용자가 설정한 학교·학년·반의 주간학습안내를 판독하고, 허가된 범위에서 인디스쿨 자료를 찾아 카카오 나와의 채팅으로 보냅니다.",
+    "longDescription": "사용자가 설정한 학교·학년·반의 주간학습안내를 홈페이지 또는 누적 로컬파일에서 판독하고, 허가된 범위에서 인디스쿨 자료를 찾아 카카오 나와의 채팅으로 보냅니다.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],

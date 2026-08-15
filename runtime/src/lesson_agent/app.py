@@ -50,13 +50,14 @@ class LessonAgent:
         with self.state.acquire(target_date):
             post = self.school.find_plan_for(target_date)
             if post is None:
+                source_reference = _source_reference(self.settings)
                 messages = (
                     f"[{target_date.isoformat()}] {self.settings.grade}학년 주간학습안내를 찾지 못했습니다.\n"
-                    f"{self.settings.school_base_url}",
+                    f"{source_reference}",
                 )
                 if not dry_run:
                     self.kakao.send_to_me(list(messages))
-                    self.state.mark_sent(target_date, self.settings.school_base_url, [], _hashes(messages))
+                    self.state.mark_sent(target_date, source_reference, [], _hashes(messages))
                 return RunResult("no_plan", not dry_run, messages)
 
             downloaded: Path | None = None
@@ -136,19 +137,27 @@ def _read_plan(
     *,
     vision_client=None,
     vision_model: str = "gpt-5-mini",
+    grade: int = 6,
 ) -> list[Lesson]:
+    extract_kwargs = {
+        "vision_client": vision_client,
+        "vision_model": vision_model,
+        "target_date": run_date,
+        "class_number": class_number,
+    }
+    if grade != 6:
+        extract_kwargs["grade"] = grade
     return parse_lessons(
-        extract_document_text(
-            path,
-            vision_client=vision_client,
-            vision_model=vision_model,
-            target_date=run_date,
-            class_number=class_number,
-        ),
+        extract_document_text(path, **extract_kwargs),
         run_date,
         class_number,
+        grade=grade,
     )
 
 
 def _hashes(messages: tuple[str, ...]) -> list[str]:
     return [hashlib.sha256(message.encode("utf-8")).hexdigest() for message in messages]
+
+
+def _source_reference(settings: Settings) -> str:
+    return f"로컬 주간안내 폴더: {settings.local_plan_dir}"

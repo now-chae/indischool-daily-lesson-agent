@@ -163,12 +163,21 @@ def title_filter_terms_for_query(item: SearchLesson, query: str) -> tuple[str, .
     return title_filter_terms(item)
 
 
-def requires_sixth_grade_filter(subject: str) -> bool:
+def requires_grade_filter(subject: str) -> bool:
     return subject not in {"미술", "음악"}
 
 
+def requires_sixth_grade_filter(subject: str) -> bool:
+    """Backward-compatible alias for callers using the old helper name."""
+    return requires_grade_filter(subject)
+
+
 def parse_result_cards(
-    html: str, subject: str, *, require_sixth_grade: bool = False
+    html: str,
+    subject: str,
+    *,
+    require_sixth_grade: bool = False,
+    require_grade: int | None = None,
 ) -> list[Resource]:
     soup = BeautifulSoup(html, "lxml")
     resources: list[Resource] = []
@@ -179,6 +188,7 @@ def parse_result_cards(
         if re.search(r"/boards/[^/]+/\d+", urlsplit(anchor["href"]).path)
         and anchor.select_one(".text-sm")
     ]
+    grade_filter = 6 if require_sixth_grade else require_grade
     for card in candidates:
         anchor = card.select_one("a.title[href]") if card.name != "a" else card
         if anchor is None or not anchor.get("href"):
@@ -187,9 +197,9 @@ def parse_result_cards(
         title = (title_node or anchor).get_text(" ", strip=True)
         if _is_pinned_notice(title):
             continue
-        if require_sixth_grade:
+        if grade_filter is not None:
             category_text = _card_category(card)
-            if not category_text.startswith("6"):
+            if not category_text.startswith(str(grade_filter)):
                 continue
         canonical = _canonical_post_url(anchor["href"])
         if canonical is None or canonical in seen:
@@ -221,13 +231,17 @@ def load_search_results_with_retry(
     subject: str,
     *,
     require_sixth_grade: bool = False,
+    require_grade: int | None = None,
     attempts: int = 3,
 ) -> list[Resource]:
     """Retry an apparently empty result page before accepting a real zero."""
     rows: list[Resource] = []
     for _ in range(max(1, attempts)):
         rows = parse_result_cards(
-            load_html(), subject, require_sixth_grade=require_sixth_grade
+            load_html(),
+            subject,
+            require_sixth_grade=require_sixth_grade,
+            require_grade=require_grade,
         )
         if rows:
             return rows
@@ -349,9 +363,10 @@ def resource_with_excerpt(
 
 
 class IndischoolBrowser:
-    def __init__(self, profile_path: Path, max_results: int = 5) -> None:
+    def __init__(self, profile_path: Path, max_results: int = 5, *, grade: int = 6) -> None:
         self.profile_path = profile_path
         self.max_results = min(max(max_results, 1), 5)
+        self.grade = grade
 
     def _connect_session_browser(self, playwright):
         try:
@@ -406,10 +421,12 @@ class IndischoolBrowser:
                     raise IndischoolError("layout_changed", f"{item.subject} 자료실을 찾지 못했습니다.")
                 board_path = subject_link.first.get_attribute("href")
                 page.goto(urljoin(INDISCHOOL_BASE_URL, board_path), wait_until="domcontentloaded")
-                grade_link = page.get_by_role("link", name="6학년", exact=True)
+                grade_link = page.get_by_role("link", name=f"{self.grade}학년", exact=True)
                 if not grade_link.count():
-                    if requires_sixth_grade_filter(item.subject):
-                        raise IndischoolError("layout_changed", "6학년 필터를 찾지 못했습니다.")
+                    if requires_grade_filter(item.subject):
+                        raise IndischoolError(
+                            "layout_changed", f"{self.grade}학년 필터를 찾지 못했습니다."
+                        )
                     grade_url = urljoin(INDISCHOOL_BASE_URL, board_path)
                 else:
                     grade_url = urljoin(INDISCHOOL_BASE_URL, grade_link.first.get_attribute("href"))
@@ -454,7 +471,7 @@ class IndischoolBrowser:
                         page_rows = load_search_results_with_retry(
                             load_search_html,
                             item.subject,
-                            require_sixth_grade=requires_sixth_grade_filter(item.subject),
+                            require_grade=(self.grade if requires_grade_filter(item.subject) else None),
                             attempts=3,
                         )
                         if not page_rows:
@@ -539,7 +556,7 @@ class IndischoolBrowser:
                     wait_until="domcontentloaded",
                     timeout=30_000,
                 )
-                grade_link = page.get_by_role("link", name="6학년", exact=True)
+                grade_link = page.get_by_role("link", name=f"{self.grade}학년", exact=True)
                 grade_url = (
                     urljoin(INDISCHOOL_BASE_URL, grade_link.first.get_attribute("href"))
                     if grade_link.count()

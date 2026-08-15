@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    school_base_url: str = "https://example.invalid"
+    plan_source: Literal["local"] = "local"
+    local_plan_dir: Path = Field(default_factory=lambda: _default_runtime_path("plans"))
     grade: int = 6
     class_number: int = 2
     excluded_subjects: Annotated[tuple[str, ...], NoDecode] = ("체육", "영어")
