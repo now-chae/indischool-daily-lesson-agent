@@ -13,7 +13,7 @@ from lesson_agent.config import Settings
 from lesson_agent.indischool import IndischoolBrowser
 from lesson_agent.kakao import KakaoAuthRequired, KakaoClient
 from lesson_agent.models import SearchLesson
-from lesson_agent.school import LocalPlanClient, SchoolClient
+from lesson_agent.school import LocalPlanClient
 from lesson_agent.state import RunState
 from lesson_agent.summarize import Summarizer
 from lesson_agent.weekly_plan import build_search_lessons, extract_document_text, parse_lessons
@@ -136,11 +136,7 @@ def _build_agent(settings: Settings) -> LessonAgent:
         openai_client = OpenAI(api_key=settings.openai_api_key)
     return LessonAgent(
         settings=settings,
-        school=(
-            LocalPlanClient(settings.local_plan_dir)
-            if settings.plan_source == "local"
-            else SchoolClient(settings.school_base_url, settings.grade)
-        ),
+        school=LocalPlanClient(settings.local_plan_dir),
         indischool=IndischoolBrowser(
             settings.indischool_profile_path, settings.max_results, grade=settings.grade
         ),
@@ -157,7 +153,7 @@ def _build_agent(settings: Settings) -> LessonAgent:
 
 
 def _kakao_link(settings: Settings) -> str:
-    return settings.school_base_url if settings.plan_source == "web" else "https://indischool.com"
+    return "https://indischool.com"
 
 
 if __name__ == "__main__":

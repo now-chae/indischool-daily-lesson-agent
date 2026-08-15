@@ -25,8 +25,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    school_base_url: str = "https://example.invalid"
-    plan_source: Literal["web", "local"] = "web"
+    plan_source: Literal["local"] = "local"
     local_plan_dir: Path = Field(default_factory=lambda: _default_runtime_path("plans"))
     grade: int = 6
     class_number: int = 2

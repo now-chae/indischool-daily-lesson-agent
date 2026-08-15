@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "respx>=0.22"]
+hwp = ["pyhwp>=0.1b15"]
 
 [project.scripts]
 lesson-agent = "lesson_agent.cli:main"

@@ -4,12 +4,16 @@ import re
 import subprocess
 import base64
 import mimetypes
+import shutil
+import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from lxml import etree
+from bs4 import BeautifulSoup
 
 from lesson_agent.models import Lesson, SearchLesson
 
@@ -116,24 +120,165 @@ def _extract_hwpx(path: Path) -> str:
             if not names:
                 raise PlanParseError("table_unreadable", "HWPX 본문 XML이 없습니다.")
             output: list[str] = []
+            table_groups: list[list[list[str]]] = []
             parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
             for name in names:
                 root = etree.fromstring(archive.read(name), parser=parser)
+                groups = _extract_hwpx_table_groups_from_root(root)
+                table_groups.extend(groups)
+                for group in groups:
+                    for row_index, row in enumerate(group):
+                        for column_index, value in enumerate(row):
+                            if value:
+                                output.append(f"TABLE | {row_index} | {column_index} | {value}")
+                table_nodes = {id(node) for node in root.xpath("//*[local-name()='tbl']")}
                 for paragraph in root.xpath("//*[local-name()='p']"):
+                    if any(id(table) in table_nodes for table in paragraph.iterancestors()):
+                        continue
                     parts = paragraph.xpath(".//*[local-name()='t']/text()")
-                    if parts:
-                        output.append("".join(parts).strip())
-            return "\n".join(line for line in output if line)
+                    value = _normalize_cell_text(" ".join(parts))
+                    if value:
+                        output.append(f"PARAGRAPH | {value}")
+            output.extend(_structured_from_hwpx_tables(table_groups))
+            if not output:
+                raise PlanParseError("table_unreadable", "HWPX 표와 본문을 읽지 못했습니다.")
+            return "\n".join(output)
     except PlanParseError:
         raise
     except (BadZipFile, etree.XMLSyntaxError, OSError, ValueError) as exc:
         raise PlanParseError("table_unreadable", "HWPX 내용을 읽을 수 없습니다.") from exc
 
 
-def _extract_hwp(path: Path) -> str:
+def _extract_hwpx_table_rows(path: Path) -> list[list[str]]:
     try:
-        completed = subprocess.run(
-            ["hwp5txt", str(path)],
+        with ZipFile(path) as archive:
+            names = sorted(
+                (name for name in archive.namelist() if re.fullmatch(r"Contents/section\d+\.xml", name)),
+                key=lambda name: int(re.search(r"\d+", name).group()),
+            )
+            parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
+            rows: list[list[str]] = []
+            for name in names:
+                root = etree.fromstring(archive.read(name), parser=parser)
+                rows.extend(_extract_hwpx_table_rows_from_root(root))
+            return rows
+    except (BadZipFile, etree.XMLSyntaxError, OSError, ValueError) as exc:
+        raise PlanParseError("table_unreadable", "HWPX 표를 읽을 수 없습니다.") from exc
+
+
+def _extract_hwpx_table_rows_from_root(root) -> list[list[str]]:
+    return [row for group in _extract_hwpx_table_groups_from_root(root) for row in group]
+
+
+def _extract_hwpx_table_groups_from_root(root) -> list[list[list[str]]]:
+    groups: list[list[list[str]]] = []
+    tables = root.xpath("//*[local-name()='tbl' and not(ancestor::*[local-name()='tbl'])]")
+    for table in tables:
+        grid: list[list[str | None]] = []
+        for row_index, row in enumerate(table.xpath("./*[local-name()='tr']")):
+            while len(grid) <= row_index:
+                grid.append([])
+            column_index = 0
+            for cell in row.xpath("./*[local-name()='tc']"):
+                while column_index < len(grid[row_index]) and grid[row_index][column_index] is not None:
+                    column_index += 1
+                span = cell.xpath("./*[local-name()='tcPr']/*[local-name()='cellSpan']")
+                span_node = span[0] if span else None
+                try:
+                    colspan = max(1, int((span_node.get("colSpan") or span_node.get("colspan") or "1"))) if span_node is not None else 1
+                    rowspan = max(1, int((span_node.get("rowSpan") or span_node.get("rowspan") or "1"))) if span_node is not None else 1
+                except ValueError:
+                    colspan = rowspan = 1
+                parts = cell.xpath(".//*[local-name()='t']/text()")
+                value = _normalize_cell_text(" ".join(parts))
+                for row_offset in range(rowspan):
+                    target_row = row_index + row_offset
+                    while len(grid) <= target_row:
+                        grid.append([])
+                    while len(grid[target_row]) < column_index + colspan:
+                        grid[target_row].append(None)
+                    for column_offset in range(colspan):
+                        if grid[target_row][column_index + column_offset] is None:
+                            grid[target_row][column_index + column_offset] = value if column_offset == 0 else ""
+                column_index += colspan
+        table_rows = [[cell or "" for cell in row] for row in grid]
+        if table_rows:
+            groups.append(table_rows)
+    return groups
+
+
+def _structured_from_hwpx_tables(table_groups: list[list[list[str]]]) -> list[str]:
+    output: list[str] = []
+    for table in table_groups:
+        header_index = next(
+            (
+                index
+                for index, row in enumerate(table)
+                if any(re.sub(r"\s+", "", cell) == "과목" for cell in row)
+            ),
+            None,
+        )
+        if header_index is not None:
+            header = table[header_index]
+            subject_index = _find_header_column(header, "과목", default=0)
+            unit_index = _find_header_column(header, "단원명", default=1)
+            topic_index = _find_header_column(header, "학습내용", default=2)
+            pages_index = _find_header_column(header, "쪽수", default=max(0, topic_index + 1))
+            occurrence_index = _find_header_column(header, "차시", default=max(0, pages_index + 1))
+            required_index = max(subject_index, unit_index, topic_index, pages_index, occurrence_index)
+            for row in table[header_index + 1 :]:
+                if len(row) <= required_index:
+                    continue
+                occurrence = re.sub(r"\s+", "", row[occurrence_index])
+                if not re.fullmatch(r"\d+/\d+", occurrence):
+                    continue
+                subject = _normalize_timetable_subject(row[subject_index])
+                topic = row[topic_index].strip()
+                if subject and topic:
+                    output.append(
+                        f"CONTENT | {subject} | {row[unit_index].strip()} | {topic} | {row[pages_index].strip()} | {occurrence}"
+                    )
+        if not table or not table[0] or not re.fullmatch(r"\d+반", re.sub(r"\s+", "", table[0][0])):
+            continue
+        class_number_match = re.search(r"\d+", re.sub(r"\s+", "", table[0][0]))
+        if class_number_match is None:
+            continue
+        class_number = int(class_number_match.group())
+        weekdays = [re.sub(r"\s+", "", value) for value in table[0][1:6]]
+        if weekdays != ["월", "화", "수", "목", "금"]:
+            continue
+        for row in table[1:]:
+            if not row or not re.fullmatch(r"\d+", row[0]):
+                continue
+            period = int(row[0])
+            for index, subject in enumerate(row[1:6]):
+                normalized = _normalize_timetable_subject(subject)
+                if normalized:
+                    output.append(f"TIMETABLE | {class_number} | {weekdays[index]} | {period} | {normalized}")
+    return output
+
+
+def _normalize_cell_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _extract_hwp(
+    path: Path,
+    *,
+    runner=None,
+) -> str:
+    command = "hwp5txt"
+    if runner is None:
+        command = _find_hwp_command("hwp5txt")
+        if command is None:
+            raise PlanParseError(
+                "hwp_reader_missing",
+                "HWP 파일을 읽으려면 hwp5txt가 필요합니다. pyhwp를 설치한 뒤 다시 실행하세요.",
+            )
+        runner = subprocess.run
+    try:
+        completed = runner(
+            [command, str(path)],
             shell=False,
             timeout=30,
             capture_output=True,
@@ -141,11 +286,188 @@ def _extract_hwp(path: Path) -> str:
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         raise PlanParseError(
-            "unsupported", "구형 HWP를 읽으려면 hwp5txt가 필요합니다."
+            "hwp_reader_missing", "HWP 파일을 읽는 hwp5txt 실행에 실패했습니다. pyhwp 설치를 확인하세요."
         ) from exc
     if completed.returncode != 0:
-        raise PlanParseError("table_unreadable", "hwp5txt 변환에 실패했습니다.")
-    return completed.stdout.decode("utf-8", errors="replace")
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise PlanParseError("table_unreadable", f"hwp5txt 변환에 실패했습니다. {detail}".strip())
+    raw = completed.stdout or b""
+    text = raw.decode("utf-8", errors="replace").strip()
+    if not text:
+        text = raw.decode("cp949", errors="replace").strip()
+    if not text:
+        raise PlanParseError("table_unreadable", "hwp5txt 변환 결과가 비어 있습니다.")
+    if "<표>" in text or "<그림>" in text:
+        return _extract_hwp_html(path, runner=runner)
+    return text
+
+
+def _extract_hwp_html(path: Path, *, runner) -> str:
+    with tempfile.TemporaryDirectory(prefix="lesson-agent-hwp-") as output_dir:
+        try:
+            completed = runner(
+                [_find_hwp_command("hwp5html") or "hwp5html", "--output", output_dir, str(path)],
+                shell=False,
+                timeout=60,
+                capture_output=True,
+                check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            raise PlanParseError(
+                "hwp_reader_missing",
+                "표가 포함된 HWP를 읽으려면 hwp5html가 필요합니다. pyhwp 설치를 확인하세요.",
+            ) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise PlanParseError("table_unreadable", f"hwp5html 변환에 실패했습니다. {detail}".strip())
+        html_files = sorted(Path(output_dir).glob("*.xhtml"))
+        if not html_files:
+            raise PlanParseError("table_unreadable", "hwp5html 결과 XHTML을 찾지 못했습니다.")
+        return _structured_from_hwp_html(html_files[0].read_text(encoding="utf-8", errors="replace"))
+
+
+def _structured_from_hwp_html(html: str) -> str:
+    soup = BeautifulSoup(html, "xml")
+    tables = soup.find_all("table")
+    if not tables:
+        raise PlanParseError("table_unreadable", "HWP HTML에서 표를 찾지 못했습니다.")
+    output: list[str] = []
+    main_grid = _html_table_grid(tables[0])
+    header_index = next(
+        (
+            index
+            for index, row in enumerate(main_grid)
+            if any(re.sub(r"\s+", "", cell) == "과목" for cell in row)
+        ),
+        None,
+    )
+    if header_index is not None:
+        header = main_grid[header_index]
+        subject_index = _find_header_column(header, "과목", default=0)
+        unit_index = _find_header_column(header, "단원명", default=1)
+        topic_index = _find_header_column(header, "학습내용", default=2)
+        pages_index = _find_header_column(header, "쪽수", default=max(0, topic_index + 1))
+        occurrence_index_from_header = _find_header_column(header, "차시", default=max(0, pages_index + 1))
+        for row in main_grid[header_index + 1 :]:
+            cells = [cell.strip() for cell in row]
+            required_index = max(
+                subject_index,
+                unit_index,
+                topic_index,
+                pages_index,
+                occurrence_index_from_header,
+            )
+            if len(cells) <= required_index:
+                continue
+            subject = _normalize_timetable_subject(cells[subject_index])
+            occurrence_index = occurrence_index_from_header
+            if not re.fullmatch(r"\d+/\d+", re.sub(r"\s+", "", cells[occurrence_index])):
+                occurrence_index = next(
+                    (
+                        index
+                        for index in range(len(cells) - 1, -1, -1)
+                        if re.fullmatch(r"\d+/\d+", re.sub(r"\s+", "", cells[index]))
+                    ),
+                    None,
+                )
+            if occurrence_index is None:
+                continue
+            occurrence = re.sub(r"\s+", "", cells[occurrence_index])
+            pages = cells[pages_index] if pages_index < len(cells) else ""
+            topic = cells[topic_index] if topic_index < len(cells) else ""
+            unit = cells[unit_index] if unit_index < len(cells) else ""
+            if not subject or not topic or not pages:
+                continue
+            output.append(
+                "CONTENT | "
+                f"{subject} | {unit} | {topic} | {pages} | {occurrence}"
+            )
+    for table in tables[1:]:
+        grid = _html_table_grid(table)
+        if not grid or not grid[0] or not re.fullmatch(r"\d+반", re.sub(r"\s+", "", grid[0][0])):
+            continue
+        class_number = int(re.search(r"\d+", re.sub(r"\s+", "", grid[0][0])).group())
+        weekdays = [re.sub(r"\s+", "", value) for value in grid[0][1:6]]
+        if weekdays != ["월", "화", "수", "목", "금"]:
+            continue
+        for row in grid[1:]:
+            if not row or not re.fullmatch(r"\d+", row[0]):
+                continue
+            period = int(row[0])
+            for index, subject in enumerate(row[1:6]):
+                normalized = _normalize_timetable_subject(subject)
+                if normalized:
+                    output.append(f"TIMETABLE | {class_number} | {weekdays[index]} | {period} | {normalized}")
+    if not output:
+        raise PlanParseError("table_unreadable", "HWP 표에서 시간표와 학습내용을 찾지 못했습니다.")
+    return "\n".join(output)
+
+
+def _find_header_column(header: list[str], label: str, *, default: int) -> int:
+    normalized_label = re.sub(r"\s+", "", label)
+    for index, value in enumerate(header):
+        if re.sub(r"\s+", "", value) == normalized_label:
+            return index
+    return default
+
+
+def _normalize_timetable_subject(value: str) -> str:
+    """Expand the one-character subject abbreviations used in HWP tables."""
+
+    normalized = re.sub(r"\s+", "", value)
+    aliases = {
+        "국": "국어",
+        "수": "수학",
+        "과": "과학",
+        "사": "사회",
+        "도": "도덕",
+        "미": "미술",
+        "음": "음악",
+        "영": "영어",
+        "체": "체육",
+        "자": "자율",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _html_table_grid(table) -> list[list[str]]:
+    grid: list[list[str | None]] = []
+    for row_index, row in enumerate(table.find_all("tr", recursive=False)):
+        while len(grid) <= row_index:
+            grid.append([])
+        column_index = 0
+        for cell in row.find_all(["td", "th"], recursive=False):
+            while column_index < len(grid[row_index]) and grid[row_index][column_index] is not None:
+                column_index += 1
+            try:
+                rowspan = max(1, int(cell.get("rowspan", "1")))
+                colspan = max(1, int(cell.get("colspan", "1")))
+            except ValueError:
+                rowspan = colspan = 1
+            value = "" if cell.find("table") else _normalize_cell_text(cell.get_text(" ", strip=True))
+            for row_offset in range(rowspan):
+                target_row = row_index + row_offset
+                while len(grid) <= target_row:
+                    grid.append([])
+                while len(grid[target_row]) < column_index + colspan:
+                    grid[target_row].append(None)
+                for column_offset in range(colspan):
+                    if grid[target_row][column_index + column_offset] is None:
+                        grid[target_row][column_index + column_offset] = value if column_offset == 0 else ""
+            column_index += colspan
+    return [[cell or "" for cell in row] for row in grid]
+
+
+def _find_hwp_command(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    python_dir = Path(sys.executable).resolve().parent
+    for suffix in (".exe", ""):
+        candidate = python_dir / f"{name}{suffix}"
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def parse_structured_week(text: str) -> tuple[list[TimetableCell], list[WeeklyContent]]:
@@ -196,8 +518,9 @@ def resolve_structured_lessons(
         (cell for cell in class_cells if cell.weekday == target_weekday),
         key=lambda cell: cell.period,
     )
-    if [cell.period for cell in target_cells] != list(range(1, 7)):
-        raise PlanParseError("timetable_incomplete", "요청한 반·요일의 1~6교시 시간표가 완전하지 않습니다.")
+    target_periods = [cell.period for cell in target_cells]
+    if not target_periods or target_periods != list(range(1, max(target_periods) + 1)):
+        raise PlanParseError("timetable_incomplete", "요청한 반·요일의 시간표가 1교시부터 연속으로 확인되지 않습니다.")
     ordered_cells = sorted(
         class_cells,
         key=lambda cell: (WEEKDAY_ORDER[cell.weekday], cell.period),

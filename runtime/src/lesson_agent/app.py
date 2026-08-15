@@ -160,6 +160,4 @@ def _hashes(messages: tuple[str, ...]) -> list[str]:
 
 
 def _source_reference(settings: Settings) -> str:
-    if settings.plan_source == "local":
-        return f"로컬 주간안내 폴더: {settings.local_plan_dir}"
-    return settings.school_base_url
+    return f"로컬 주간안내 폴더: {settings.local_plan_dir}"
