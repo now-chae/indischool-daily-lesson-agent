@@ -21,6 +21,17 @@
 
 ## 🚀 설치 순서
 
+### 🔐 설정 파일은 설치할 때 한 번에 만듭니다
+
+이 프로젝트는 처음부터 `.env.example`, `.gitignore`, `config.py`, `setup.ps1`를 함께 사용합니다. 사용자는 `.env` 파일을 직접 만들거나 GitHub에 올릴 필요가 없습니다.
+
+- `.env.example`: 어떤 설정이 필요한지 보여 주는 빈 예시
+- `setup.ps1`: 학교 정보와 API 키를 질문해 사용자 PC의 `%LOCALAPPDATA%\LessonAgent\config\.env`에 저장
+- `.env`: 실제 값이 들어 있는 비공개 파일. 프로젝트 폴더와 OneDrive 밖에 저장
+- `.gitignore`: `.env`가 GitHub에 올라가지 않도록 차단
+
+카카오 access token과 refresh token은 `.env`에 저장하지 않고 Windows 자격 증명 저장소에 보관합니다. 따라서 설치자는 설정 파일을 직접 편집하지 않고 `setup.ps1`, `run.ps1 -SetupKakao`만 실행하면 됩니다.
+
 ### 1️⃣ ZIP 내려받기
 
 GitHub 화면에서 **Code → Download ZIP**을 누릅니다. ZIP은 OneDrive 폴더가 아닌 `C:\LessonAgent`에 풀어 주세요.

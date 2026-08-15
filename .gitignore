@@ -1,4 +1,7 @@
+# 실제 비밀값 파일은 저장소에 올리지 않습니다.
 .env
+*.env
+!.env.example
 .venv/
 .state/
 .downloads/
