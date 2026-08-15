@@ -127,11 +127,7 @@ http://localhost:8765/callback
 .\scripts\run.ps1 -Date 2026-06-26
 ```
 
-이상이 없으면 매일 오전 8시 40분 예약을 등록합니다.
-
-```powershell
-.\scripts\install-task.ps1
-```
+이상이 없으면 Codex 앱의 **예약 메뉴**에서 매일 오전 8시 40분 실행을 등록합니다. 예약 지시문에는 이 저장소의 실행 파일과 주안 확인·인디스쿨 검색·카카오 발송 순서를 적어 주세요. 이 프로젝트의 기본 사용 흐름은 Windows 작업 스케줄러가 아니라 Codex 예약입니다.
 
 ## 📩 카카오 메시지 형식
 
@@ -163,8 +159,4 @@ http://localhost:8765/callback
 | 로컬파일을 찾지 못함 | 파일명에 `YYYY-MM-DD`가 있는지, `plans` 폴더에 있는지 확인 |
 | 오늘 자료가 오지 않음 | `run.ps1 -Date YYYY-MM-DD -DryRun`으로 오류 확인 |
 
-예약 발송을 중지하려면 다음을 실행합니다.
-
-```powershell
-.\scripts\remove-task.ps1
-```
+예약 발송을 중지하려면 Codex 앱의 예약 메뉴에서 해당 예약을 해제합니다. 파일과 로그인 설정은 삭제하지 않습니다.
