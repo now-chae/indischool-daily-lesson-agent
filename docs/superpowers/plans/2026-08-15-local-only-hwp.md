@@ -167,7 +167,7 @@ Expected: all HWP reader tests pass.
 
 - [ ] **Step 5: Run the local attachment smoke test**
 
-Run the preview command against `F:\학교별 자료\백석초\주안\6학년_게시용_8월18일 - 8월21일(1주).hwp` for a date inside the filename range. Do not copy the file into Git or the public package.
+Run the preview command against a local HWP file whose filename contains an 8월 18일–8월 21일 range. Do not copy the file into Git or the public package.
 
 - [ ] **Step 6: Commit**
 

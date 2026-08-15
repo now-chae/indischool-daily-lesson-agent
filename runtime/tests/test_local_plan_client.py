@@ -4,7 +4,7 @@ from lesson_agent.school import LocalPlanClient
 
 
 def test_local_plan_client_selects_korean_month_day_range(tmp_path):
-    plan = tmp_path / "6학년_게시용_8월18일 - 8월21일(1주).hwp"
+    plan = tmp_path / "6학년_주간학습안내_8월18일 - 8월21일(1주).hwp"
     plan.write_bytes(b"sample")
     client = LocalPlanClient(tmp_path)
 
